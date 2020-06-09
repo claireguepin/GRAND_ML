@@ -33,7 +33,7 @@ AntennaInfo = hdf5io.GetAntennaInfo(inputfilename, EventName)
 nantennas = hdf5io.GetNumberOfAntennas(AntennaInfo)
 energy = RunInfo['Energy'][0]
 zenith = 180.-hdf5io.GetEventZenith(RunInfo, 0)
-azimuth = 360.-hdf5io.GetEventAzimuth(RunInfo, 0)
+azimuth = hdf5io.GetEventAzimuth(RunInfo, 0)-180.
 
 postab = np.zeros(shape=(nantennas, 3))
 for i in range(nantennas):
