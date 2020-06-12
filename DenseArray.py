@@ -42,7 +42,7 @@ np.random.seed(manualSeed)
 # FLAGS
 
 # Visualize footprint and signal for one event
-vis_data = 1
+vis_data = 0
 
 # Create data set for one progenitor, all showers
 create_fulldataset = 0
