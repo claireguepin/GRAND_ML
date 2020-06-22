@@ -23,7 +23,7 @@ zenVal = str(81.3)
 list_f = glob.glob(PATH_data+'*'+progenitor+'*'+zenVal+'*')
 print('Number of files = %i' % (len(list_f)))
 
-index = 0
+index = 12
 
 inputfilename = glob.glob(list_f[index] + '/*' + progenitor + '*'
                           + zenVal + '*.hdf5')[0]
@@ -47,13 +47,23 @@ p2pE = ComputeP2P.get_p2p_hdf5(inputfilename, antennamax='All',
 p2pE_tot = p2pE[3, :]
 max_data_test = np.max(p2pE_tot)
 
+# All antenna positions
+antenna_all = np.loadtxt('data/GP300propsedLayout.dat', usecols=(2, 3, 4))
+
+antenna_first_num = np.int(AntennaInfo[0][0][1:])
+diff_x = antenna_all[antenna_first_num, 0]-postab[0, 0]
+diff_y = antenna_all[antenna_first_num, 1]-postab[0, 1]
+diff_z = antenna_all[antenna_first_num, 2]-postab[0, 2]
+
 # =============================================================================
 # VISUALIZE ARRAY
 
 plt.figure()
 ax = plt.gca()
 
-plt.scatter(postab[:, 0]/1e3, postab[:, 1]/1e3, 30,
+plt.scatter(antenna_all[:, 0]/1e3, antenna_all[:, 1]/1e3, 30, color='grey')
+
+plt.scatter((postab[:, 0]+diff_x)/1e3, (postab[:, 1]+diff_y)/1e3, 30,
             c=p2pE_tot/max_data_test,
             cmap=cm.viridis, vmin=0.0, vmax=0.6)
 
