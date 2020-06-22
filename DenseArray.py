@@ -42,7 +42,7 @@ np.random.seed(manualSeed)
 # FLAGS
 
 # Visualize footprint and signal for one event
-vis_data = 0
+vis_data = 1
 
 # Create data set for one progenitor, all showers
 create_fulldataset = 0
@@ -273,7 +273,7 @@ if vis_data:
     # PLOT SIGNAL
     # Example for one antenna
 
-    ant_num = 162  # 162, 250
+    ant_num = 174  # 162, 250
 
     efield_tab = hdf5io.GetAntennaEfield(inputfilename, EventName, ant_num)
     volt_tab = hdf5io.GetAntennaVoltage(inputfilename, EventName, ant_num)
@@ -287,6 +287,11 @@ if vis_data:
     maxi_filtvolt = np.max(np.abs(filtvolt_tab[:, 1:4]))
     maxi_sigproc = np.max(np.abs(filtvoltnoise_tab[:, 1:4]))
     maxi = np.max([maxi_efield, maxi_volt, maxi_filtvolt])
+
+    # print(maxi_efield)
+    # for i in range(nantennas):
+    #     efield_tab = hdf5io.GetAntennaEfield(inputfilename, EventName, i)
+    #     print(np.argmax(efield_tab[:, 2]))
 
     plt.figure()
     ax = plt.gca()
@@ -340,7 +345,7 @@ if vis_data:
     ax = plt.gca()
 
     plt.subplots_adjust(left=0.13)
-    
+
     plt.plot(filtvoltnoise_tab[:, 0], filtvoltnoise_tab[:, 1]/maxi_sigproc)
     plt.plot(filtvoltnoise_tab[:, 0], filtvoltnoise_tab[:, 2]/maxi_sigproc)
     plt.plot(filtvoltnoise_tab[:, 0], filtvoltnoise_tab[:, 3]/maxi_sigproc)

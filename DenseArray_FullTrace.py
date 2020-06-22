@@ -46,7 +46,7 @@ np.random.seed(manualSeed)
 create_dataset = 0
 
 # Deep learning training and test
-train_model = 1
+train_model = 0
 test_model = 1
 
 # =============================================================================
@@ -60,7 +60,7 @@ progenitor = 'Proton'
 ZenVal = '56.1'
 
 # Choose signal: 'efield', 'voltage', 'filteredvoltage', 'filteredvoltagenoise'
-trace = 'filteredvoltage'
+trace = 'filteredvoltagenoise'
 
 # Choose labels to be predicted by the network: 'energy' or 'energy_azimuth'
 net_labels = 'energy'
@@ -83,8 +83,8 @@ batchsize = 1
 PATH_data = '/Users/guepin/Documents/GRAND/OutboxSignalProc/'
 
 # Name with chosen properties for saving information and figures
-name_prop = 'full_trace_'+net_labels+'_'+progenitor+'_zen'+ZenVal+'_'\
-    + trace+'_lr'+str(learn_rate)+'_'+lr_scheduler+'_wd'+str(wd)+'_bs'\
+name_prop = trace+'_full_trace_'+net_labels+'_'+progenitor+'_zen'+ZenVal+'_'\
+    + '_lr'+str(learn_rate)+'_'+lr_scheduler+'_wd'+str(wd)+'_bs'\
     + str(batchsize)+'_nepoch'+str(n_epochs)
 
 # Path to save trained network properties
@@ -108,12 +108,12 @@ class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
         # For time traces
-        self.conv3d_1 = nn.Conv3d(4, 4, (21, 1, 1), stride=(5, 1, 1))
+        self.conv3d_1 = nn.Conv3d(4, 4, (11, 1, 1), stride=(5, 1, 1))
         self.pool3d_1 = nn.MaxPool3d((2, 1, 1))
-        self.conv3d_2 = nn.Conv3d(4, 1, (21, 1, 1), stride=(1, 1, 1))
+        self.conv3d_2 = nn.Conv3d(4, 1, (11, 1, 1), stride=(1, 1, 1))
         self.pool3d_2 = nn.MaxPool3d((2, 1, 1))
         # For spatial properties
-        self.conv1 = nn.Conv2d(4, 4, 4)
+        self.conv1 = nn.Conv2d(9, 4, 4)
         self.conv2 = nn.Conv2d(4, 2, 2)
         # Default value of stride is kernel_size
         self.pool1 = nn.MaxPool2d(2)
@@ -129,9 +129,12 @@ class Net(nn.Module):
     def forward(self, x):
         """Forward propagation."""
         # Time traces properties
+        # print(np.shape(x))
         x = self.pool3d_1(F.relu(self.conv3d_1(x)))
+        # print(np.shape(x))
         x = self.pool3d_2(F.relu(self.conv3d_2(x)))
-        x = torch.reshape(x, (1, 4, 13, 25))
+        # print(np.shape(x))
+        x = torch.reshape(x, (1, 9, 13, 25))
         # Spatial properties
         x = self.pool1(F.relu(self.conv1(x)))
         x = self.pool2(F.relu(self.conv2(x)))
@@ -143,9 +146,9 @@ class Net(nn.Module):
 
 net = Net()
 
-# tensor_x = torch.Tensor(np.zeros(shape=(1, 4, 298, 13, 25)))
+tensor_x = torch.Tensor(np.zeros(shape=(1, 4, 298, 13, 25)))
 # tensor_x = torch.Tensor(np.zeros(shape=(1, 1, 13, 25)))
-# net(tensor_x)
+net(tensor_x)
 
 # Loss function: Mean Square Error Loss
 criterion = nn.MSELoss()
@@ -378,7 +381,7 @@ if train_model:
     ax.set_xlim([0, len(loss_cumul_arr)])
     ax.set_ylim([0, 100.])
     ax.tick_params(labelsize=14)
-    # plt.savefig(PATH_fig+'CumulLoss_'+name_prop+'.pdf')
+    plt.savefig(PATH_fig+'CumulLoss_'+name_prop+'.pdf')
     plt.show()
 
     # =============================================================================
@@ -391,7 +394,7 @@ if train_model:
     ax.set_xlim([0, len(loss_arr)])
     ax.set_ylim([0, 1.])
     ax.tick_params(labelsize=14)
-    # plt.savefig(PATH_fig+'Loss_'+name_prop+'.pdf')
+    plt.savefig(PATH_fig+'Loss_'+name_prop+'.pdf')
     plt.show()
 
     # =============================================================================
@@ -410,11 +413,14 @@ if train_model:
     plt.xlabel(r'$\log_{10} (E_{\rm pred})-\log_{10} (E_{\rm real})$',
                fontsize=14)
     plt.ylabel(r'$N$', fontsize=14)
-    plt.text(abs(x).max()/3, y.max()-10,
+    plt.text(abs(x).max()/3, y.max()*9/10.,
              r'$\rm Mean = {0:.4f}$'.format(mean_train), fontsize=14)
-    plt.text(abs(x).max()/3, y.max()-10-y.max()/10,
+    plt.text(abs(x).max()/3, y.max()*9/10.-y.max()/10,
              r'$\rm Std = {0:.4f}$'.format(std_train), fontsize=14)
-    # plt.savefig(PATH_fig+'HistTrain_'+name_prop+'.pdf')
+    plt.text(abs(x).max()/3, y.max()*9/10.-y.max()*2/10,
+             r'$\rm Accuracy = {0:.0f} \%$'.format(accuracy_train),
+             fontsize=14)
+    plt.savefig(PATH_fig+'HistTrain_'+name_prop+'.pdf')
     plt.show()
 
 # =============================================================================
@@ -483,11 +489,14 @@ if test_model:
     plt.xlabel(r'$\log_{10} (E_{\rm pred})-\log_{10} (E_{\rm real})$',
                fontsize=14)
     plt.ylabel(r'N', fontsize=14)
-    plt.text(abs(x).max()/3, y.max()-10,
+    plt.text(abs(x).max()/3, y.max()*9/10.,
              r'$\rm Mean = {0:.4f}$'.format(mean_train), fontsize=14)
-    plt.text(abs(x).max()/3, y.max()-10-y.max()/10,
+    plt.text(abs(x).max()/3, y.max()*9/10.-y.max()/10,
              r'$\rm Std = {0:.4f}$'.format(std_train), fontsize=14)
-    # plt.savefig(PATH_fig+'HistTest_'+name_prop+'.pdf')
+    plt.text(abs(x).max()/3, y.max()*9/10.-y.max()*2/10,
+             r'$\rm Accuracy = {0:.0f} \%$'.format(accuracy_test),
+             fontsize=14)
+    plt.savefig(PATH_fig+'HistTest_'+name_prop+'.pdf')
     plt.show()
 
     # =============================================================================
