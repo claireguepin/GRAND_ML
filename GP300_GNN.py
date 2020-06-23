@@ -29,16 +29,56 @@ random.seed(manualSeed)
 torch.manual_seed(manualSeed)
 np.random.seed(manualSeed)
 
+# =============================================================================
+
+# CHOOSE PARAMETERS
+
+# Choose progenitor: 'Proton'
+progenitor = 'Proton'
+
+# Choose zenith angle: 81.3
+ZenVal = '81.3'
+
+# Choose signal: 'efield', 'voltage', 'filteredvoltage', 'filteredvoltagenoise'
+trace = 'efield'
+
+# Choose labels to be predicted by the network: 'energy' or 'energy_azimuth'
+net_labels = 'energy'
+
+# Choose number of epochs for training
+n_epochs = 500
+
+# Choose learning rate, scheduler 'cst' or 'dec'
+learn_rate = 1e-4
+lr_scheduler = 'cst'
+
+# Choose weight decay
+wd = 0.0
+
+# Choose batch size: 1 fully stochastic gradient descent
+batchsize = 1
+
+# Path for data bank (ZHAireS simulations)
 PATH_data = '/Users/guepin/Documents/GRAND/TheGP300Outbox/'
 
-progenitor = 'Proton'
-zenVal = str(81.3)
+# Name with chosen properties for saving information and figures
+name_prop = trace+'_int_'+net_labels+'_'+progenitor+'_zen'+ZenVal+'_lr'\
+    + str(learn_rate)+'_'+lr_scheduler+'_wd'+str(wd)+'_drop'\
+    + '_bs'+str(batchsize)+'_nepoch'+str(n_epochs)
 
-FILE_data = glob.glob(PATH_data+'*'+progenitor+'*'+zenVal+'*')
+# Path to save trained network properties
+PATH = './data/net_'+name_prop+'.pth'
+
+# Path to save figures
+PATH_fig = '/Users/guepin/Documents/NotesLatex/GRAND_reco/Figures_GP300_GNN'
+
+FILE_data = glob.glob(PATH_data+'*'+progenitor+'*'+ZenVal+'*')
 print('Number of files = %i' % (len(FILE_data)))
 
 # All antenna positions
 ant_pos_all = np.loadtxt('data/GP300propsedLayout.dat', usecols=(2, 3, 4))
+
+# =============================================================================
 
 
 class StarShapeDataset(InMemoryDataset):
@@ -69,7 +109,7 @@ class StarShapeDataset(InMemoryDataset):
         for i in range(len(FILE_data)):
 
             inputfilename = glob.glob(FILE_data[i] + '/*' + progenitor + '*'
-                                      + zenVal + '*.hdf5')[0]
+                                      + ZenVal + '*.hdf5')[0]
             RunInfo = hdf5io.GetRunInfo(inputfilename)
             EventName = hdf5io.GetEventName(RunInfo, 0)
             AntennaInfo = hdf5io.GetAntennaInfo(inputfilename, EventName)
@@ -99,9 +139,6 @@ class StarShapeDataset(InMemoryDataset):
 
         data, slices = self.collate(data_list)
         torch.save((data, slices), self.processed_paths[0])
-
-
-dataset = StarShapeDataset('./', pre_transform=T.KNNGraph(k=3))
 
 
 def accuracy_model(model, real_labels, pred_labels, maxlogdiff):
@@ -138,6 +175,10 @@ class Net(torch.nn.Module):
         return x
 
 
+# =============================================================================
+
+dataset = StarShapeDataset('./', pre_transform=T.KNNGraph(k=3))
+
 model = Net()
 dataset = dataset.shuffle()
 # data = dataset[0]
@@ -147,12 +188,14 @@ dataset = dataset.shuffle()
 max_P2P = torch.max(dataset.data.x).item()
 dataset.data.x /= max_P2P
 
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=0)
+optimizer = torch.optim.Adam(model.parameters(),
+                             lr=learn_rate,
+                             weight_decay=wd)
 crit = torch.nn.MSELoss()
 
 nsim = len(dataset)
-train_dataset = dataset[:nsim-20]
-test_dataset = dataset[nsim-20:nsim]
+train_dataset = dataset[:nsim-50]
+test_dataset = dataset[nsim-50:nsim]
 train_loader = DataLoader(train_dataset, batch_size=1)
 test_loader = DataLoader(test_dataset, batch_size=1)
 
@@ -160,7 +203,7 @@ loss_cumul_arr = []
 
 print("START TRAINING")
 model.train()
-for epoch in range(50):
+for epoch in range(n_epochs):
     running_loss = 0.0
     for data in train_loader:
         optimizer.zero_grad()
@@ -216,10 +259,10 @@ ax = plt.gca()
 plt.plot(loss_cumul_arr, linewidth=2)
 plt.xlabel(r'Number of epochs', fontsize=16)
 plt.ylabel(r'Cumulative loss', fontsize=16)
-# ax.set_xlim([0, len(loss_cumul_arr)])
-ax.set_ylim([0, 50.])
+ax.set_xlim([0, n_epochs])
+# ax.set_ylim([0, 50.])
 ax.tick_params(labelsize=14)
-# plt.savefig(PATH_fig+'CumulLoss_'+name_prop+'.pdf')
+plt.savefig(PATH_fig+'CumulLoss_'+name_prop+'.pdf')
 plt.show()
 
 # =============================================================================
@@ -241,14 +284,14 @@ plt.xlabel(r'$\log_{10} (E_{\rm pred})-\log_{10} (E_{\rm real})$',
            fontsize=14)
 plt.ylabel(r'$N$', fontsize=14)
 
-plt.text(abs(x).max()/3, y.max()-10,
+plt.text(abs(x).max()/3, y.max()*9/10.,
          r'$\rm Mean = {0:.4f}$'.format(mean_train), fontsize=14)
-plt.text(abs(x).max()/3, y.max()-10-y.max()/10,
+plt.text(abs(x).max()/3, y.max()*9/10.-y.max()/10,
          r'$\rm Std = {0:.4f}$'.format(std_train), fontsize=14)
 plt.text(abs(x).max()/3, y.max()*9/10.-y.max()*2/10,
          r'$\rm Accuracy = {0:.0f} \%$'.format(accuracy_train), fontsize=14)
 
-# plt.savefig(PATH_fig+'HistTrain_'+name_prop+'.pdf')
+plt.savefig(PATH_fig+'HistTrain_'+name_prop+'.pdf')
 plt.show()
 
 # =============================================================================
@@ -277,5 +320,20 @@ plt.text(abs(x).max()/3, y.max()*9/10.-y.max()/10,
 plt.text(abs(x).max()/3, y.max()*9/10.-y.max()*2/10,
          r'$\rm Accuracy = {0:.0f} \%$'.format(accuracy_test), fontsize=14)
 
-# plt.savefig(PATH_fig+'HistTest_'+name_prop+'.pdf')
+plt.savefig(PATH_fig+'HistTest_'+name_prop+'.pdf')
+plt.show()
+
+# =============================================================================
+
+fig = plt.figure()
+ax = plt.gca()
+
+plt.plot(solu_test, linestyle='', marker='o')
+plt.plot(pred_test, linestyle='', marker='x')
+
+ax.tick_params(labelsize=14)
+
+# ax.set_xlim([-10000,10000])
+# ax.set_ylim([-10000,10000])
+# ax.axis('equal')
 plt.show()
