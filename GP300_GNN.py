@@ -65,7 +65,7 @@ maxlog = 0.1
 # Name with chosen properties for saving information and figures
 name_prop = trace+'_p2p_'+net_labels+'_'+progenitor+'_zen'+ZenVal+'_lr'\
     + str(learn_rate)+'_'+lr_scheduler+'_wd'+str(wd)\
-    + '_bs'+str(batchsize)+'_nepoch'+str(n_epochs)+'_GNN_2'
+    + '_bs'+str(batchsize)+'_nepoch'+str(n_epochs)+'_GNN_7'
 
 # All antenna positions
 ant_pos_all = np.loadtxt('data/GP300propsedLayout.dat', usecols=(2, 3, 4))
@@ -161,15 +161,15 @@ class GNN(torch.nn.Module):
         self.convs = torch.nn.ModuleList()
         self.prelus = torch.nn.ModuleList()
 
-        self.convs.append(nn.DenseGCNConv(in_channels, out_channels))
-        self.prelus.append(torch.nn.PReLU())
+        # self.convs.append(nn.DenseGCNConv(in_channels, out_channels))
+        # self.prelus.append(torch.nn.PReLU())
 
-        # self.convs.append(nn.DenseGCNConv(in_channels, hidden_channels))
-        # self.prelus.append(torch.nn.PReLU())
-        # self.convs.append(nn.DenseGCNConv(hidden_channels, hidden_channels))
-        # self.prelus.append(torch.nn.PReLU())
-        # self.convs.append(nn.DenseGCNConv(hidden_channels, out_channels))
-        # self.prelus.append(torch.nn.PReLU())
+        self.convs.append(nn.DenseGCNConv(in_channels, hidden_channels))
+        self.prelus.append(torch.nn.PReLU())
+        self.convs.append(nn.DenseGCNConv(hidden_channels, hidden_channels))
+        self.prelus.append(torch.nn.PReLU())
+        self.convs.append(nn.DenseGCNConv(hidden_channels, out_channels))
+        self.prelus.append(torch.nn.PReLU())
 
     def forward(self, x, adj, mask=None):
         """Forward propagation."""
@@ -187,16 +187,32 @@ class Net(torch.nn.Module):
     def __init__(self):
         super(Net, self).__init__()
 
-        # QUESTION: What does 64 represents?
+        # Check if num input, hidden and output channels are correctly defined
+        # Check what parameter lin does. Unclear
+
+        num_hid_cha = 12
+        num_out_cha = 12
+
+        num_inp_cha = dataset.num_node_features
+        # num_hid_cha = 64
         num_nodes = int(np.ceil(0.33 * 288))  # 0.25/0.33
-        self.conv1_pool = GNN(dataset.num_node_features, 64, num_nodes)
-        self.conv1_emb = GNN(dataset.num_node_features, 64, 64, lin=False)
+        # num_out_cha = 64
+        self.conv1_pool = GNN(num_inp_cha, num_hid_cha, num_nodes)
+        self.conv1_emb = GNN(num_inp_cha, num_hid_cha, num_out_cha)
 
+        num_inp_cha = num_out_cha
+        # num_hid_cha = 64
         num_nodes = int(np.ceil(0.33 * num_nodes))  # 0.25/0.33
-        self.conv2_pool = GNN(64, 64, num_nodes)
-        self.conv2_emb = GNN(64, 64, 64, lin=False)
+        # num_out_cha = 64
+        self.conv2_pool = GNN(num_inp_cha, num_hid_cha, num_nodes)
+        self.conv2_emb = GNN(num_inp_cha, num_hid_cha, num_out_cha, lin=False)
 
-        self.fc1 = Basenn.Linear(2048, 20)  # 216/384/2048
+        num_inp_cha = num_out_cha
+        # num_hid_cha = 64
+        # num_out_cha = 64
+        self.gnn3_emb = GNN(num_inp_cha, num_hid_cha, num_out_cha, lin=False)
+
+        self.fc1 = Basenn.Linear(384, 20)  # 192/216/384/1024/2048
         self.fc2 = Basenn.Linear(20, 1)
         self.prelufc1 = torch.nn.PReLU()
 
@@ -205,10 +221,11 @@ class Net(torch.nn.Module):
         x, adj = data.x.float(), data.adj
         s = self.conv1_pool(x, adj, mask)
         x = self.conv1_emb(x, adj, mask)
-        x, adj, l1, e1 = nn.dense_diff_pool(x, adj, s)
+        x, adj, l1, e1 = nn.dense_diff_pool(x, adj, s, mask)
         s = self.conv2_pool(x, adj)
         x = self.conv2_emb(x, adj)
         x, adj, l2, e2 = nn.dense_diff_pool(x, adj, s)
+        x = self.gnn3_emb(x, adj)
         x = torch.reshape(x, (-1,))
         x = self.prelufc1(self.fc1(x))
         x = self.fc2(x)
