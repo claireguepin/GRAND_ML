@@ -31,7 +31,11 @@ random.seed(manualSeed)
 torch.manual_seed(manualSeed)
 np.random.seed(manualSeed)
 
+create_dataset = 0
+test_model = 1
+
 # =============================================================================
+
 # CHOOSE PARAMETERS
 
 # Choose progenitor: 'Proton'
@@ -50,7 +54,7 @@ net_labels = 'energy'
 n_epochs = 100
 
 # Choose learning rate, scheduler 'cst' or 'dec'
-learn_rate = 1e-4
+learn_rate = 1e-3
 lr_scheduler = 'cst'
 
 # Choose weight decay
@@ -65,7 +69,7 @@ maxlog = 0.1
 # Name with chosen properties for saving information and figures
 name_prop = trace+'_p2p_'+net_labels+'_'+progenitor+'_zen'+ZenVal+'_lr'\
     + str(learn_rate)+'_'+lr_scheduler+'_wd'+str(wd)\
-    + '_bs'+str(batchsize)+'_nepoch'+str(n_epochs)+'_GNN_2'
+    + '_bs'+str(batchsize)+'_nepoch'+str(n_epochs)+'_GNN_1'
 
 # All antenna positions
 ant_pos_all = np.loadtxt('data/GP300propsedLayout.dat', usecols=(2, 3, 4))
@@ -79,6 +83,7 @@ PATH = './data/net_'+name_prop+'.pth'
 
 FILE_data = glob.glob(PATH_data+'*'+progenitor+'*'+ZenVal+'*')
 print('Number of files = %i' % (len(FILE_data)))
+
 # =============================================================================
 
 
@@ -107,6 +112,7 @@ class p2pDataset(InMemoryDataset):
         """Read data into data list."""
         data_list = []
 
+        # for i in range(1):
         for i in range(len(FILE_data)):
 
             inputfilename = glob.glob(FILE_data[i] + '/*' + progenitor + '*'
@@ -117,6 +123,21 @@ class p2pDataset(InMemoryDataset):
             nantennas = hdf5io.GetNumberOfAntennas(AntennaInfo)
             energy = RunInfo['Energy'][0]
 
+            # # COMPUTE TOTAL PEAK TO PEAK AMPLITUDE
+            # p2pE = ComputeP2P.get_p2p_hdf5(inputfilename, antennamax='All',
+            #                                antennamin=0, usetrace='efield')
+
+            # # FILL TOTAL P2P FOR ALL 'TRIGGERED' ANTENNAS
+            # p2p_tot = np.zeros(len(ant_pos_all))
+            # for i_ant in range(nantennas):
+            #     num_ant = int(AntennaInfo[i_ant][0][1:])
+            #     p2p_tot[num_ant] = p2pE[3, i_ant]
+
+            # data = Data(
+            #     x=torch.tensor(np.transpose(np.array([p2p_tot]))),
+            #     y=torch.tensor(np.array([np.log10(energy)])),
+            #     pos=torch.tensor(ant_pos_all))
+
             # FILL Efield array FOR ALL 'TRIGGERED' ANTENNAS
             efield_arr = np.zeros((len(ant_pos_all), 1100))
             for i_ant in range(nantennas):
@@ -125,6 +146,10 @@ class p2pDataset(InMemoryDataset):
                                                      AntennaID)
                 num_ant = int(AntennaInfo[i_ant][0][1:])
                 efield_arr[num_ant, :] = efield_loc[0:1100, 1]
+
+            # print(np.shape(torch.tensor(np.transpose(np.array([p2p_tot])))))
+            # print(np.shape(torch.tensor(efield_arr)))
+            # print(np.shape(torch.tensor(ant_pos_all)))
 
             data = Data(
                 x=torch.tensor(efield_arr),
@@ -189,26 +214,41 @@ class Net(torch.nn.Module):
 
         # QUESTION: What does 64 represents?
         num_nodes = int(np.ceil(0.33 * 288))  # 0.25/0.33
-        self.conv1_pool = GNN(dataset.num_node_features, 64, num_nodes)
-        self.conv1_emb = GNN(dataset.num_node_features, 64, 64, lin=False)
+        self.conv1_pool = GNN(dataset.num_node_features, 12, num_nodes)
+        self.conv1_emb = GNN(dataset.num_node_features, 12, 64, lin=False)
 
         num_nodes = int(np.ceil(0.33 * num_nodes))  # 0.25/0.33
-        self.conv2_pool = GNN(64, 64, num_nodes)
-        self.conv2_emb = GNN(64, 64, 64, lin=False)
+        self.conv2_pool = GNN(64, 12, num_nodes)
+        self.conv2_emb = GNN(64, 12, 12, lin=False)
 
-        self.fc1 = Basenn.Linear(2048, 20)  # 216/384/2048
+        # self.conv1 = nn.GCNConv(dataset.num_node_features, 4)
+        # self.conv2 = nn.GCNConv(4, 2)
+
+        self.fc1 = Basenn.Linear(384, 20)  # 216/384
+        # self.fc1 = Basenn.Linear(288, 40)
         self.fc2 = Basenn.Linear(20, 1)
+
+        # self.prelu1 = torch.nn.PReLU()
+        # self.prelu2 = torch.nn.PReLU()
+
         self.prelufc1 = torch.nn.PReLU()
+        # self.prelu1 = torch.nn.ReLU()
+        # self.prelu2 = torch.nn.ReLU()
+        # self.prelufc1 = torch.nn.ReLU()
 
     def forward(self, data, mask=None):
         """Forward propagation."""
         x, adj = data.x.float(), data.adj
+        # print(np.shape(x))
+        # print(np.shape(adj))
         s = self.conv1_pool(x, adj, mask)
         x = self.conv1_emb(x, adj, mask)
         x, adj, l1, e1 = nn.dense_diff_pool(x, adj, s)
         s = self.conv2_pool(x, adj)
         x = self.conv2_emb(x, adj)
         x, adj, l2, e2 = nn.dense_diff_pool(x, adj, s)
+        # x = self.prelu1(self.conv1_emb(x, edge_index))
+        # x = self.prelu2(self.conv2(x, edge_index))
         x = torch.reshape(x, (-1,))
         x = self.prelufc1(self.fc1(x))
         x = self.fc2(x)
