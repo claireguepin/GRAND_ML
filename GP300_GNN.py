@@ -121,17 +121,30 @@ class p2pDataset(InMemoryDataset):
             energy = RunInfo['Energy'][0]
 
             # FILL Efield array FOR ALL 'TRIGGERED' ANTENNAS
-            efield_arr = np.zeros((len(ant_pos_all), 1100))
+            efield_arr = np.zeros((len(ant_pos_all), 1100+4))
             for i_ant in range(nantennas):
                 AntennaID = hdf5io.GetAntennaID(AntennaInfo, i_ant)
                 efield_loc = hdf5io.GetAntennaEfield(
                     inputfilename, EventName, AntennaID)
                 num_ant = int(AntennaInfo[i_ant][0][1:])
-                efield_arr[num_ant, :] = efield_loc[0:1100, 1]
+                posx = ant_pos_all[num_ant, 0]
+                posy = ant_pos_all[num_ant, 1]
+                posz = ant_pos_all[num_ant, 2]
+                efield_arr[num_ant, 0:1100] = efield_loc[0:1100, 1]
+                efield_arr[num_ant, 1100:1103] = np.array([posx, posy, posz])
+                efield_arr[num_ant, 1103] = efield_loc[0, 0]
                 # efield_loc = hdf5io.GetAntennaFilteredVoltage(
                 #     inputfilename, EventName, AntennaID)
                 # num_ant = int(AntennaInfo[i_ant][0][1:])
                 # efield_arr[num_ant, :] = efield_loc[0:1100, 1]
+            efield_arr[:, 1100:1103] /= max_dist
+            tmin = np.min(efield_arr[:, 1103])
+            tmax = np.max(efield_arr[:, 1103]-tmin)
+            efield_arr[:, 1103] = (efield_arr[:, 1103]-tmin)/tmax
+            # print(np.max(efield_arr[:, 1100:1103]))
+            # print(tmin)
+            # print(tmax)
+            # print(efield_arr[:, 1103])
 
             data = Data(
                 x=torch.tensor(efield_arr),
@@ -168,15 +181,17 @@ class GNN(torch.nn.Module):
         self.convs = torch.nn.ModuleList()
         self.prelus = torch.nn.ModuleList()
 
-        self.convs.append(nn.DenseGCNConv(in_channels, out_channels))
-        self.prelus.append(torch.nn.PReLU())
-
-        # self.convs.append(nn.DenseGCNConv(in_channels, hidden_channels))
+        # self.convs.append(nn.DenseGCNConv(in_channels, out_channels))
         # self.prelus.append(torch.nn.PReLU())
+        
+        # Possible to use Gatv2Conv?
+
+        self.convs.append(nn.DenseGCNConv(in_channels, hidden_channels))
+        self.prelus.append(torch.nn.PReLU())
         # self.convs.append(nn.DenseGCNConv(hidden_channels, hidden_channels))
         # self.prelus.append(torch.nn.PReLU())
-        # self.convs.append(nn.DenseGCNConv(hidden_channels, out_channels))
-        # self.prelus.append(torch.nn.PReLU())
+        self.convs.append(nn.DenseGCNConv(hidden_channels, out_channels))
+        self.prelus.append(torch.nn.PReLU())
 
     def forward(self, x, adj, mask=None):
         """Forward propagation."""
@@ -198,26 +213,26 @@ class Net(torch.nn.Module):
         num_hid_cha = 12
         num_out_cha = 12
 
-        num_inp_cha = dataset.num_node_features+3
+        num_inp_cha = dataset.num_node_features
         # num_hid_cha = 64
-        num_nodes = int(np.ceil(0.1 * 288))  # 0.25/0.33
+        num_nodes = int(np.ceil(0.2 * 288))  # 0.25/0.33
         # num_out_cha = 64
         self.conv1_pool = GNN(num_inp_cha, num_hid_cha, num_nodes)
         self.conv1_emb = GNN(num_inp_cha, num_hid_cha, num_out_cha)
 
         num_inp_cha = num_out_cha
         # num_hid_cha = 64
-        num_nodes = int(np.ceil(0.1 * num_nodes))  # 0.25/0.33
+        num_nodes = int(np.ceil(0.2 * num_nodes))  # 0.25/0.33
         # num_out_cha = 64
         self.conv2_pool = GNN(num_inp_cha, num_hid_cha, num_nodes)
         self.conv2_emb = GNN(num_inp_cha, num_hid_cha, num_out_cha, lin=False)
 
         num_inp_cha = num_out_cha
-        num_hid_cha = 4
-        num_out_cha = 4
+        num_hid_cha = 4  # 4
+        num_out_cha = 4  # 4
         self.gnn3_emb = GNN(num_inp_cha, num_hid_cha, num_out_cha, lin=False)
 
-        self.fc1 = Basenn.Linear(12, 4)  # 36/192/216/384/1024/2048
+        self.fc1 = Basenn.Linear(48, 4)  # 36/192/216/384/1024/2048
         self.fc2 = Basenn.Linear(4, 1)
         self.prelufc1 = torch.nn.PReLU()
 
@@ -227,10 +242,10 @@ class Net(torch.nn.Module):
 
     def forward(self, data, mask=None):
         """Forward propagation."""
-        # x, adj = data.x.float(), data.adj
-        x = torch.cat((data.x.float(), data.pos.float()/max_dist), 2)
-        # print(np.shape(x))
-        adj = data.adj
+        x, adj = data.x.float(), data.adj
+        # x = torch.cat((data.x.float(), data.pos.float()/max_dist), 2)
+        # adj = data.adj
+       # print(np.shape(x))
         s = self.conv1_pool(x, adj, mask)
         x = self.conv1_emb(x, adj, mask)
         # print(np.shape(x))
@@ -352,9 +367,11 @@ with torch.no_grad():
 
 accuracy_train = accuracy_model(model, torch.Tensor(solu),
                                 torch.Tensor(pred), maxlog)
-rms_train = np.std(np.array(pred)-np.array(solu))
-print('Accuracy train: %0.2f %%' % (accuracy_train))
-print('RMS log10 train: %0.3f' % (rms_train))
+rms_log10_train = np.std(np.array(pred)-np.array(solu))
+rms_train = np.std(10**np.array(pred)/10**np.array(solu))*100
+print('\nAccuracy train: %0.2f %%' % (accuracy_train))
+print('RMS log10 train: %0.3f' % (rms_log10_train))
+print('RMS train: %0.1f %%' % rms_train)
 
 # =============================================================================
 
@@ -373,9 +390,11 @@ with torch.no_grad():
 
 accuracy_test = accuracy_model(model, torch.Tensor(solu_test),
                                torch.Tensor(pred_test), maxlog)
-rms_test = np.std(np.array(pred_test)-np.array(solu_test))
-print('Accuracy test: %0.2f %%' % (accuracy_test))
-print('RMS log10 test: %0.3f' % (rms_test))
+rms_log10_test = np.std(np.array(pred_test)-np.array(solu_test))
+rms_test = np.std(10**np.array(pred_test)/10**np.array(solu_test))*100
+print('\nAccuracy test: %0.2f %%' % (accuracy_test))
+print('RMS log10 test: %0.3f' % (rms_log10_test))
+print('RMS test: %0.1f %%' % rms_test)
 
 # =============================================================================
 # FIGURES
