@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
+GRAND - Study energy reconstruction with Graph Neural Network.
+
 Created on Thu Jun  4 17:33:58 2020
 
 @author: guepin
@@ -65,10 +67,11 @@ maxlog = 0.1
 # Name with chosen properties for saving information and figures
 name_prop = trace+'_p2p_'+net_labels+'_'+progenitor+'_zen'+ZenVal+'_lr'\
     + str(learn_rate)+'_'+lr_scheduler+'_wd'+str(wd)\
-    + '_bs'+str(batchsize)+'_nepoch'+str(n_epochs)+'_GNN_7'
+    + '_bs'+str(batchsize)+'_nepoch'+str(n_epochs)+'_GNN_8'
 
 # All antenna positions
 ant_pos_all = np.loadtxt('data/GP300propsedLayout.dat', usecols=(2, 3, 4))
+max_dist = np.max(ant_pos_all)
 
 # Path for data bank (ZHAireS simulations)
 PATH_data = '/Users/claireguepin/Projects/GRAND/GP300Outbox/'
@@ -121,10 +124,14 @@ class p2pDataset(InMemoryDataset):
             efield_arr = np.zeros((len(ant_pos_all), 1100))
             for i_ant in range(nantennas):
                 AntennaID = hdf5io.GetAntennaID(AntennaInfo, i_ant)
-                efield_loc = hdf5io.GetAntennaEfield(inputfilename, EventName,
-                                                     AntennaID)
+                efield_loc = hdf5io.GetAntennaEfield(
+                    inputfilename, EventName, AntennaID)
                 num_ant = int(AntennaInfo[i_ant][0][1:])
                 efield_arr[num_ant, :] = efield_loc[0:1100, 1]
+                # efield_loc = hdf5io.GetAntennaFilteredVoltage(
+                #     inputfilename, EventName, AntennaID)
+                # num_ant = int(AntennaInfo[i_ant][0][1:])
+                # efield_arr[num_ant, :] = efield_loc[0:1100, 1]
 
             data = Data(
                 x=torch.tensor(efield_arr),
@@ -161,15 +168,15 @@ class GNN(torch.nn.Module):
         self.convs = torch.nn.ModuleList()
         self.prelus = torch.nn.ModuleList()
 
-        # self.convs.append(nn.DenseGCNConv(in_channels, out_channels))
-        # self.prelus.append(torch.nn.PReLU())
+        self.convs.append(nn.DenseGCNConv(in_channels, out_channels))
+        self.prelus.append(torch.nn.PReLU())
 
-        self.convs.append(nn.DenseGCNConv(in_channels, hidden_channels))
-        self.prelus.append(torch.nn.PReLU())
-        self.convs.append(nn.DenseGCNConv(hidden_channels, hidden_channels))
-        self.prelus.append(torch.nn.PReLU())
-        self.convs.append(nn.DenseGCNConv(hidden_channels, out_channels))
-        self.prelus.append(torch.nn.PReLU())
+        # self.convs.append(nn.DenseGCNConv(in_channels, hidden_channels))
+        # self.prelus.append(torch.nn.PReLU())
+        # self.convs.append(nn.DenseGCNConv(hidden_channels, hidden_channels))
+        # self.prelus.append(torch.nn.PReLU())
+        # self.convs.append(nn.DenseGCNConv(hidden_channels, out_channels))
+        # self.prelus.append(torch.nn.PReLU())
 
     def forward(self, x, adj, mask=None):
         """Forward propagation."""
@@ -186,48 +193,60 @@ class Net(torch.nn.Module):
 
     def __init__(self):
         super(Net, self).__init__()
-
         # Check if num input, hidden and output channels are correctly defined
         # Check what parameter lin does. Unclear
-
         num_hid_cha = 12
         num_out_cha = 12
 
-        num_inp_cha = dataset.num_node_features
+        num_inp_cha = dataset.num_node_features+3
         # num_hid_cha = 64
-        num_nodes = int(np.ceil(0.33 * 288))  # 0.25/0.33
+        num_nodes = int(np.ceil(0.2 * 288))  # 0.25/0.33
         # num_out_cha = 64
         self.conv1_pool = GNN(num_inp_cha, num_hid_cha, num_nodes)
         self.conv1_emb = GNN(num_inp_cha, num_hid_cha, num_out_cha)
 
         num_inp_cha = num_out_cha
         # num_hid_cha = 64
-        num_nodes = int(np.ceil(0.33 * num_nodes))  # 0.25/0.33
+        num_nodes = int(np.ceil(0.2 * num_nodes))  # 0.25/0.33
         # num_out_cha = 64
         self.conv2_pool = GNN(num_inp_cha, num_hid_cha, num_nodes)
         self.conv2_emb = GNN(num_inp_cha, num_hid_cha, num_out_cha, lin=False)
 
         num_inp_cha = num_out_cha
-        # num_hid_cha = 64
-        # num_out_cha = 64
+        num_hid_cha = 4
+        num_out_cha = 4
         self.gnn3_emb = GNN(num_inp_cha, num_hid_cha, num_out_cha, lin=False)
 
-        self.fc1 = Basenn.Linear(384, 20)  # 192/216/384/1024/2048
-        self.fc2 = Basenn.Linear(20, 1)
+        self.fc1 = Basenn.Linear(48, 4)  # 36/192/216/384/1024/2048
+        self.fc2 = Basenn.Linear(4, 1)
         self.prelufc1 = torch.nn.PReLU()
+
+        # self.fc1 = Basenn.Linear(316800, 20)  # 192/216/384/1024/2048
+        # self.fc2 = Basenn.Linear(20, 1)
+        # self.prelufc1 = torch.nn.PReLU()
 
     def forward(self, data, mask=None):
         """Forward propagation."""
-        x, adj = data.x.float(), data.adj
+        # x, adj = data.x.float(), data.adj
+        x = torch.cat((data.x.float(), data.pos.float()/max_dist), 2)
+        # print(np.shape(x))
+        adj = data.adj
         s = self.conv1_pool(x, adj, mask)
         x = self.conv1_emb(x, adj, mask)
+        # print(np.shape(x))
         x, adj, l1, e1 = nn.dense_diff_pool(x, adj, s, mask)
+        # print(np.shape(x))
         s = self.conv2_pool(x, adj)
         x = self.conv2_emb(x, adj)
+        # print(np.shape(x))
         x, adj, l2, e2 = nn.dense_diff_pool(x, adj, s)
+        # print(np.shape(x))
         x = self.gnn3_emb(x, adj)
+        # print(np.shape(x))
         x = torch.reshape(x, (-1,))
+        # print(np.shape(x))
         x = self.prelufc1(self.fc1(x))
+        # print(np.shape(x))
         x = self.fc2(x)
         return x
 
@@ -400,6 +419,31 @@ plt.text(abs(x).max()/3, y.max()*9/10.-y.max()/10,
 #           r'$\rm Accuracy = {0:.0f} \%$'.format(accuracy_train), fontsize=14)
 
 plt.savefig(PATH_fig+'HistTrain_'+name_prop+'.pdf')
+plt.show()
+
+fig = plt.figure()
+ax = plt.gca()
+
+DE_E = (10**np.array(pred) - 10**np.array(solu))/10**np.array(solu)
+
+y, x, _ = plt.hist(DE_E, bins=np.arange(-0.5, 0.5 + 0.05, 0.05))
+mean_train = np.mean(DE_E)
+std_train = np.std(DE_E)
+
+ax.xaxis.set_ticks_position('both')
+ax.yaxis.set_ticks_position('both')
+ax.tick_params(labelsize=14)
+ax.set_xlim([-0.5, 0.5])
+plt.xlabel(r'$(E_{\rm pred}-E_{\rm real})/E_{\rm real}$',
+           fontsize=14)
+plt.ylabel(r'$N$', fontsize=14)
+
+plt.text(abs(x).max()/3, y.max()*9/10.,
+         r'$\rm Mean = {0:.4f}$'.format(mean_train), fontsize=14)
+plt.text(abs(x).max()/3, y.max()*9/10.-y.max()/10,
+         r'$\rm Std = {0:.4f}$'.format(std_train), fontsize=14)
+# plt.text(abs(x).max()/3, y.max()*9/10.-y.max()*2/10,
+#           r'$\rm Accuracy = {0:.0f} \%$'.format(accuracy_train), fontsize=14)
 plt.show()
 
 # =============================================================================
