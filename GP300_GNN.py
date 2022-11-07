@@ -200,14 +200,14 @@ class Net(torch.nn.Module):
 
         num_inp_cha = dataset.num_node_features+3
         # num_hid_cha = 64
-        num_nodes = int(np.ceil(0.2 * 288))  # 0.25/0.33
+        num_nodes = int(np.ceil(0.1 * 288))  # 0.25/0.33
         # num_out_cha = 64
         self.conv1_pool = GNN(num_inp_cha, num_hid_cha, num_nodes)
         self.conv1_emb = GNN(num_inp_cha, num_hid_cha, num_out_cha)
 
         num_inp_cha = num_out_cha
         # num_hid_cha = 64
-        num_nodes = int(np.ceil(0.2 * num_nodes))  # 0.25/0.33
+        num_nodes = int(np.ceil(0.1 * num_nodes))  # 0.25/0.33
         # num_out_cha = 64
         self.conv2_pool = GNN(num_inp_cha, num_hid_cha, num_nodes)
         self.conv2_emb = GNN(num_inp_cha, num_hid_cha, num_out_cha, lin=False)
@@ -217,7 +217,7 @@ class Net(torch.nn.Module):
         num_out_cha = 4
         self.gnn3_emb = GNN(num_inp_cha, num_hid_cha, num_out_cha, lin=False)
 
-        self.fc1 = Basenn.Linear(48, 4)  # 36/192/216/384/1024/2048
+        self.fc1 = Basenn.Linear(12, 4)  # 36/192/216/384/1024/2048
         self.fc2 = Basenn.Linear(4, 1)
         self.prelufc1 = torch.nn.PReLU()
 
@@ -418,24 +418,26 @@ plt.text(abs(x).max()/3, y.max()*9/10.-y.max()/10,
 # plt.text(abs(x).max()/3, y.max()*9/10.-y.max()*2/10,
 #           r'$\rm Accuracy = {0:.0f} \%$'.format(accuracy_train), fontsize=14)
 
-plt.savefig(PATH_fig+'HistTrain_'+name_prop+'.pdf')
+plt.savefig(PATH_fig+'HistTrain_log10_'+name_prop+'.pdf')
 plt.show()
 
 fig = plt.figure()
 ax = plt.gca()
 
-DE_E = (10**np.array(pred) - 10**np.array(solu))/10**np.array(solu)
+# DE_E = (10**np.array(pred) - 10**np.array(solu))/10**np.array(solu)
+DE_E = 10**np.array(pred)/10**np.array(solu)
 
-y, x, _ = plt.hist(DE_E, bins=np.arange(-0.5, 0.5 + 0.05, 0.05))
+# y, x, _ = plt.hist(DE_E, bins=np.arange(-0.5, 0.5 + 0.05, 0.05))
+y, x, _ = plt.hist(DE_E, bins=np.arange(0., 2. + 0.05, 0.05))
 mean_train = np.mean(DE_E)
 std_train = np.std(DE_E)
 
 ax.xaxis.set_ticks_position('both')
 ax.yaxis.set_ticks_position('both')
 ax.tick_params(labelsize=14)
-ax.set_xlim([-0.5, 0.5])
-plt.xlabel(r'$(E_{\rm pred}-E_{\rm real})/E_{\rm real}$',
-           fontsize=14)
+# ax.set_xlim([-0.5, 0.5])
+ax.set_xlim([0., 2.])
+plt.xlabel(r'$E_{\rm pred}/E_{\rm real}$', fontsize=14)
 plt.ylabel(r'$N$', fontsize=14)
 
 plt.text(abs(x).max()/3, y.max()*9/10.,
@@ -444,6 +446,7 @@ plt.text(abs(x).max()/3, y.max()*9/10.-y.max()/10,
          r'$\rm Std = {0:.4f}$'.format(std_train), fontsize=14)
 # plt.text(abs(x).max()/3, y.max()*9/10.-y.max()*2/10,
 #           r'$\rm Accuracy = {0:.0f} \%$'.format(accuracy_train), fontsize=14)
+plt.savefig(PATH_fig+'HistTrain_'+name_prop+'.pdf')
 plt.show()
 
 # =============================================================================
@@ -472,6 +475,33 @@ plt.text(abs(x).max()/3, y.max()*9/10.-y.max()/10,
 # plt.text(abs(x).max()/3, y.max()*9/10.-y.max()*2/10,
 #           r'$\rm Accuracy = {0:.0f} \%$'.format(accuracy_test), fontsize=14)
 
+plt.savefig(PATH_fig+'HistTest_log10_'+name_prop+'.pdf')
+plt.show()
+
+fig = plt.figure()
+ax = plt.gca()
+
+DE_E = 10**np.array(pred_test)/10**np.array(solu_test)
+
+# y, x, _ = plt.hist(DE_E, bins=np.arange(-0.5, 0.5 + 0.05, 0.05))
+y, x, _ = plt.hist(DE_E, bins=np.arange(0., 2. + 0.05, 0.05))
+mean_train = np.mean(DE_E)
+std_train = np.std(DE_E)
+
+ax.xaxis.set_ticks_position('both')
+ax.yaxis.set_ticks_position('both')
+ax.tick_params(labelsize=14)
+# ax.set_xlim([-0.5, 0.5])
+ax.set_xlim([0., 2.])
+plt.xlabel(r'$E_{\rm pred}/E_{\rm real}$', fontsize=14)
+plt.ylabel(r'$N$', fontsize=14)
+
+plt.text(abs(x).max()/3, y.max()*9/10.,
+         r'$\rm Mean = {0:.4f}$'.format(mean_train), fontsize=14)
+plt.text(abs(x).max()/3, y.max()*9/10.-y.max()/10,
+         r'$\rm Std = {0:.4f}$'.format(std_train), fontsize=14)
+# plt.text(abs(x).max()/3, y.max()*9/10.-y.max()*2/10,
+#           r'$\rm Accuracy = {0:.0f} \%$'.format(accuracy_train), fontsize=14)
 plt.savefig(PATH_fig+'HistTest_'+name_prop+'.pdf')
 plt.show()
 
